@@ -297,33 +297,65 @@ const products = [
   }
 ];
 
+const clearDatabase = async () => {
+  try {
+    console.log('🗑️  Clearing existing database...');
+    
+    // Get all collection names
+    const collections = await mongoose.connection.db.listCollections().toArray();
+    const collectionNames = collections.map(c => c.name);
+    
+    if (collectionNames.length === 0) {
+      console.log('   ℹ️  Database is already empty');
+      return;
+    }
+    
+    // Drop each collection
+    for (const collectionName of collectionNames) {
+      try {
+        await mongoose.connection.db.collection(collectionName).drop();
+        console.log(`   ✓ Dropped collection: ${collectionName}`);
+      } catch (error) {
+        if (error.message.includes('ns not found')) {
+          console.log(`   ⚠️  Collection ${collectionName} was already empty`);
+        } else {
+          throw error;
+        }
+      }
+    }
+    
+    console.log('✅ Database cleared successfully!');
+  } catch (error) {
+    console.error('❌ Error clearing database:', error);
+    throw error;
+  }
+};
+
 const seedDatabase = async () => {
   try {
-    // Clear existing data
-    console.log('Clearing existing data...');
-    await User.deleteMany({});
-    await Product.deleteMany({});
+    // Clear the entire database first
+    await clearDatabase();
 
     // Create admin user first
-    console.log('Creating users...');
+    console.log('\n👤 Creating users...');
     const adminUser = await User.create(users[0]);
     const regularUser = await User.create(users[1]);
 
-    console.log('Admin user created:', adminUser.email);
-    console.log('Regular user created:', regularUser.email);
+    console.log(`   ✓ Admin user created: ${adminUser.email}`);
+    console.log(`   ✓ Regular user created: ${regularUser.email}`);
 
     // Create products with admin as creator
-    console.log('Creating products...');
+    console.log('\n🎮 Creating products...');
     const productsWithCreator = products.map(product => ({
       ...product,
       createdBy: adminUser._id
     }));
 
     const createdProducts = await Product.insertMany(productsWithCreator);
-    console.log(`Created ${createdProducts.length} products`);
+    console.log(`   ✓ Created ${createdProducts.length} products`);
 
     // Add some sample reviews
-    console.log('Adding sample reviews...');
+    console.log('\n⭐ Adding sample reviews...');
     const sampleReviews = [
       {
         user: regularUser._id,
@@ -336,29 +368,64 @@ const seedDatabase = async () => {
         name: adminUser.name,
         rating: 4,
         comment: 'Great product, fast shipping. The build quality is excellent.'
+      },
+      {
+        user: regularUser._id,
+        name: regularUser.name,
+        rating: 5,
+        comment: 'Perfect for Nintendo Switch! Works exactly as expected.'
+      },
+      {
+        user: adminUser._id,
+        name: adminUser.name,
+        rating: 3,
+        comment: 'Good quality but a bit expensive. Overall satisfied with the purchase.'
       }
     ];
 
-    // Add reviews to some products
-    for (let i = 0; i < Math.min(5, createdProducts.length); i++) {
+    // Add reviews to random products
+    const reviewedProducts = [];
+    for (let i = 0; i < Math.min(6, createdProducts.length); i++) {
       const product = createdProducts[i];
-      const reviewsToAdd = sampleReviews.slice(0, Math.floor(Math.random() * 2) + 1);
+      const numReviews = Math.floor(Math.random() * 3) + 1; // 1-3 reviews per product
+      const reviewsToAdd = [];
+      
+      for (let j = 0; j < numReviews; j++) {
+        const randomReview = sampleReviews[Math.floor(Math.random() * sampleReviews.length)];
+        reviewsToAdd.push({
+          ...randomReview,
+          rating: Math.floor(Math.random() * 2) + 4, // 4-5 star ratings
+          createdAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000) // Random date within last 30 days
+        });
+      }
       
       product.reviews = reviewsToAdd;
       product.numReviews = reviewsToAdd.length;
       product.rating = reviewsToAdd.reduce((sum, review) => sum + review.rating, 0) / reviewsToAdd.length;
       
       await product.save();
+      reviewedProducts.push(product.name);
     }
 
-    console.log('Sample data seeded successfully!');
-    console.log('\nLogin credentials:');
-    console.log('Admin: admin@nintendo.com / admin123');
-    console.log('User: user@nintendo.com / user123');
+    console.log(`   ✓ Added reviews to ${reviewedProducts.length} products`);
+
+    console.log('\n🎉 Sample data seeded successfully!');
+    console.log('\n📋 Database Summary:');
+    console.log(`   • Users: ${users.length}`);
+    console.log(`   • Products: ${createdProducts.length}`);
+    console.log(`   • Products with reviews: ${reviewedProducts.length}`);
+    
+    console.log('\n🔐 Login credentials:');
+    console.log('   Admin: admin@nintendo.com / admin123');
+    console.log('   User:  user@nintendo.com / user123');
+    
+    console.log('\n🚀 You can now start the application!');
+    console.log('   Backend: npm run dev');
+    console.log('   Frontend: npm run client');
     
     process.exit(0);
   } catch (error) {
-    console.error('Error seeding database:', error);
+    console.error('❌ Error seeding database:', error);
     process.exit(1);
   }
 };
